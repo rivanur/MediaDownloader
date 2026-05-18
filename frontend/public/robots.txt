@@ -1,0 +1,8 @@
+# robots.txt - Instruksi untuk crawler mesin pencari
+# https://media-downloader-sable-xi.vercel.app/
+
+User-agent: *
+Allow: /
+
+# Sitemap untuk membantu Google menemukan semua halaman
+Sitemap: https://media-downloader-sable-xi.vercel.app/sitemap.xml
