@@ -133,8 +133,17 @@ class MediaDownloader:
                 url,
             ]
 
-            # Add cookies if browser detected (helps bypass Instagram/TikTok blocks)
-            if self.browser:
+            # Add cookies if cookies.txt exists in root or current directory
+            import os
+            cookies_file = Path(__file__).parent.parent / "cookies.txt"
+            if not cookies_file.exists():
+                cookies_file = Path(os.getcwd()) / "cookies.txt"
+
+            if cookies_file.exists():
+                logger.info(f"Using cookies from file: {cookies_file}")
+                cmd.extend(["--cookies", str(cookies_file)])
+            elif self.browser:
+                logger.info(f"Using cookies from browser: {self.browser}")
                 cmd.extend(["--cookies-from-browser", self.browser])
 
             result = subprocess.run(
@@ -373,7 +382,17 @@ class MediaDownloader:
                 "--no-playlist",
             ]
 
-            if self.browser and use_cookies:
+            # Add cookies if cookies.txt exists in root or current directory
+            import os
+            cookies_file = Path(__file__).parent.parent / "cookies.txt"
+            if not cookies_file.exists():
+                cookies_file = Path(os.getcwd()) / "cookies.txt"
+
+            if cookies_file.exists() and use_cookies:
+                logger.info(f"Using cookies from file: {cookies_file}")
+                cmd.extend(["--cookies", str(cookies_file)])
+            elif self.browser and use_cookies:
+                logger.info(f"Using cookies from browser: {self.browser}")
                 cmd.extend(["--cookies-from-browser", self.browser])
 
             if output_type == "audio":
