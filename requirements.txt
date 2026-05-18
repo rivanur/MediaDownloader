@@ -1,7 +1,8 @@
 
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
-git+https://github.com/yt-dlp/yt-dlp.git@master
+yt-dlp
 pydantic
 python-multipart
+aiofiles

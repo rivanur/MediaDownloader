@@ -7,7 +7,7 @@ import re
 import subprocess
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, Callable, List
+from typing import Dict, Any, Optional, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class MediaDownloader:
 
     def __init__(self, ytdlp_path: str = "yt-dlp"):
         self.ytdlp_path = ytdlp_path
-        logger.info("MediaDownloader initialized (Server Mode - Only using cookies.txt)")
+        logger.info("MediaDownloader initialized (Anonymous Mode - No cookies)")
 
     def detect_platform(self, url: str) -> str:
         """Detect platform from URL"""
@@ -118,40 +118,6 @@ class MediaDownloader:
                 url,
             ]
 
-            # Add cookies if cookies.txt exists in Render secrets, root, or current directory
-            import os
-            cookies_file = Path("/etc/secrets/..data/cookies.txt")
-            if not cookies_file.exists():
-                cookies_file = Path("/etc/secrets/cookies.txt")
-            if not cookies_file.exists():
-                cookies_file = Path(__file__).parent.parent / "cookies.txt"
-            if not cookies_file.exists():
-                cookies_file = Path(os.getcwd()) / "cookies.txt"
-
-            # Check if cookies text is passed in environment variables (resilient fallback!)
-            env_cookies = os.environ.get("cookies.txt") or os.environ.get("COOKIES") or os.environ.get("COOKIES_TEXT")
-            if env_cookies and not cookies_file.exists():
-                logger.warning("DEBUG COOKIES: Found cookies text in Environment Variables! Writing to temp file...")
-                temp_cookies = Path("/tmp/cookies.txt")
-                try:
-                    temp_cookies.parent.mkdir(exist_ok=True)
-                    temp_cookies.write_text(env_cookies)
-                    cookies_file = temp_cookies
-                except Exception as e:
-                    logger.warning(f"DEBUG COOKIES: Failed to write temp cookies from env: {str(e)}")
-
-            if cookies_file.exists():
-                logger.warning(f"DEBUG COOKIES: cookies.txt FOUND at {cookies_file.absolute()} (Size: {cookies_file.stat().st_size} bytes)")
-                cmd.extend(["--cookies", str(cookies_file)])
-            else:
-                logger.warning(f"DEBUG COOKIES: cookies.txt NOT FOUND. Searched at: {cookies_file.absolute()}")
-                if os.path.exists("/etc/secrets"):
-                    try:
-                        logger.warning(f"DEBUG SECRETS DIR CONTENT: {os.listdir('/etc/secrets')}")
-                        logger.warning(f"DEBUG SECRETS ..data CONTENT: {os.listdir('/etc/secrets/..data')}")
-                    except Exception as e:
-                        logger.warning(f"DEBUG SECRETS DIR ERROR: {str(e)}")
-
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -160,8 +126,6 @@ class MediaDownloader:
                 encoding="utf-8",
                 errors="replace",
             )
-
-            cookie_fallback_happened = False
 
             if result.returncode != 0:
                 error_msg = result.stderr.strip()
@@ -191,11 +155,8 @@ class MediaDownloader:
                     error_msg = "Facebook memblokir akses otomatis ke video ini. Coba pastikan video ini bisa dibuka tanpa login."
                 elif "403" in error_msg and "kick" in url.lower():
                     error_msg = "Kick memblokir akses pengunduh otomatis. Silakan coba video dari platform lain."
-                elif "login" in err_lower or "sign in" in err_lower:
-                    error_msg = "Video ini memerlukan login (akun tertentu). Untuk saat ini belum bisa didownload."
-                    
-                if cookie_fallback_happened and ("403" in error_msg or "login" in err_lower or "privat" in error_msg.lower()):
-                    error_msg += " (💡 TIPS: Tutup browser Chrome/Edge kamu sebentar lalu klik tombol download lagi. Ini membantu sistem melewati proteksi)."
+                if "403" in error_msg or "login" in err_lower or "privat" in error_msg.lower():
+                    error_msg += " (Website ini mungkin memblokir akses anonim atau video bersifat privat)."
                     
                 return {"success": False, "error": error_msg}
 
@@ -327,7 +288,7 @@ class MediaDownloader:
         platform: str = "other",
         custom_output_dir: Optional[str] = None,
         progress_callback: Optional[Callable] = None,
-        use_cookies: bool = True,
+        use_cookies: bool = False,
     ) -> Dict[str, Any]:
         """
         Download video/audio with real-time progress reporting.
@@ -375,33 +336,6 @@ class MediaDownloader:
                 "-o", output_template,
                 "--no-playlist",
             ]
-
-            # Add cookies if cookies.txt exists in Render secrets, root, or current directory
-            import os
-            cookies_file = Path("/etc/secrets/..data/cookies.txt")
-            if not cookies_file.exists():
-                cookies_file = Path("/etc/secrets/cookies.txt")
-            if not cookies_file.exists():
-                cookies_file = Path(__file__).parent.parent / "cookies.txt"
-            if not cookies_file.exists():
-                cookies_file = Path(os.getcwd()) / "cookies.txt"
-
-            # Check if cookies text is passed in environment variables (resilient fallback!)
-            env_cookies = os.environ.get("cookies.txt") or os.environ.get("COOKIES") or os.environ.get("COOKIES_TEXT")
-            if env_cookies and not cookies_file.exists():
-                logger.warning("DEBUG COOKIES: Found cookies text in Environment Variables! Writing to temp file...")
-                temp_cookies = Path("/tmp/cookies.txt")
-                try:
-                    temp_cookies.parent.mkdir(exist_ok=True)
-                    temp_cookies.write_text(env_cookies)
-                    cookies_file = temp_cookies
-                except Exception as e:
-                    logger.warning(f"DEBUG COOKIES: Failed to write temp cookies from env: {str(e)}")
-
-            if cookies_file.exists() and use_cookies:
-                logger.warning(f"DEBUG COOKIES DOWNLOAD: cookies.txt FOUND at {cookies_file.absolute()} (Size: {cookies_file.stat().st_size} bytes)")
-                cmd.extend(["--cookies", str(cookies_file)])
-
             if output_type == "audio":
                 cmd.extend([
                     "-x",
@@ -475,19 +409,13 @@ class MediaDownloader:
                 err_msg = " ".join(stderr_lines[-2:]) if stderr_lines else "Unknown error"
                 logger.error(f"Download failed with code {process.returncode}: {err_msg}")
                 
-                # Retry without cookies if cookie database is locked or DPAPI decryption fails
-                err_msg_lower = err_msg.lower() if err_msg else ""
-                if use_cookies and ("cookie" in err_msg_lower or "dpapi" in err_msg_lower or "decrypt" in err_msg_lower):
-                    logger.warning("Cookie database locked or decryption failed. Retrying without cookies...")
-                    return self.download_with_progress(
-                        url, format_id, output_type, output_ext, platform, custom_output_dir, progress_callback, use_cookies=False
-                    )
+
 
                 # FB/IG Fallback: retry with 'best' using correct param order
                 if ("facebook" in url or "instagram" in url) and format_id != "best":
                     logger.info("Retrying with fallback 'best' format...")
                     return self.download_with_progress(
-                        url, "best", output_type, output_ext, platform, str(output_dir), progress_callback, use_cookies=use_cookies
+                        url, "best", output_type, output_ext, platform, str(output_dir), progress_callback
                     )
                 
                 err_friendly = (
@@ -520,8 +448,6 @@ class MediaDownloader:
                     }
                 else:
                     return {"success": False, "file_path": None, "file_size": 0, "error": "File tidak ditemukan setelah download selesai."}
-            else:
-                return {"success": False, "file_path": None, "file_size": 0, "error": "Download gagal. Coba lagi atau periksa URL."}
 
         except subprocess.TimeoutExpired:
             if 'process' in locals():

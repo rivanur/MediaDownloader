@@ -3,12 +3,11 @@ import logging
 import threading
 import json
 import os
-import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-from fastapi import FastAPI, APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import FastAPI, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -55,7 +54,13 @@ class DownloadTask(Base):
     completed_at = Column(DateTime, nullable=True)
 
 def get_db_path():
-    db_dir = Path.home() / ".mediadownloader"
+    # Render (Linux) uses /tmp for writable persistent storage
+    # Locally (Windows) uses home directory
+    import platform
+    if platform.system() == "Windows":
+        db_dir = Path.home() / ".mediadownloader"
+    else:
+        db_dir = Path("/tmp") / ".mediadownloader"
     db_dir.mkdir(exist_ok=True)
     return db_dir / "tasks.db"
 
