@@ -130,6 +130,7 @@ class MediaDownloader:
                 "--add-header", "Sec-Fetch-Site:same-origin",
                 "--no-check-certificate",
                 "--geo-bypass",
+                "--extractor-args", "youtube:player_client=android",
                 url,
             ]
 
@@ -402,6 +403,7 @@ class MediaDownloader:
                 "--no-check-certificate",
                 "--restrict-filenames",   # ← Sanitize karakter invalid (emoji, spesial) di nama file
                 "--trim-filenames", "150", # ← Potong nama file maks 150 char (Windows limit 260)
+                "--extractor-args", "youtube:player_client=android",
                 "-f", format_id,
                 "-o", output_template,
                 "--no-playlist",
