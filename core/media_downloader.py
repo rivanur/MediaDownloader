@@ -121,7 +121,6 @@ class MediaDownloader:
                 "--no-warnings",
                 "--dump-json",
                 "--no-playlist",
-                "--extractor-args", "youtube:player_client=android,ios;skip=webpage",
                 "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "--add-header", "Sec-Ch-Ua:\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
                 "--add-header", "Sec-Ch-Ua-Mobile:?0",
@@ -134,17 +133,8 @@ class MediaDownloader:
                 url,
             ]
 
-            # Add cookies if cookies.txt exists in root or current directory
-            import os
-            cookies_file = Path(__file__).parent.parent / "cookies.txt"
-            if not cookies_file.exists():
-                cookies_file = Path(os.getcwd()) / "cookies.txt"
-
-            if cookies_file.exists():
-                logger.info(f"Using cookies from file: {cookies_file}")
-                cmd.extend(["--cookies", str(cookies_file)])
-            elif self.browser:
-                logger.info(f"Using cookies from browser: {self.browser}")
+            # Add cookies if browser detected (helps bypass Instagram/TikTok blocks)
+            if self.browser:
                 cmd.extend(["--cookies-from-browser", self.browser])
 
             result = subprocess.run(
@@ -159,20 +149,10 @@ class MediaDownloader:
             cookie_fallback_happened = False
             # Retry without cookies if cookie database is locked or decryption fails
             stderr_lower = result.stderr.lower() if result.stderr else ""
-            if result.returncode != 0 and ("cookie" in stderr_lower or "dpapi" in stderr_lower or "decrypt" in stderr_lower):
+            if result.returncode != 0 and self.browser and ("cookie" in stderr_lower or "dpapi" in stderr_lower or "decrypt" in stderr_lower):
                 logger.warning("Cookie database locked or decryption failed. Retrying without cookies...")
                 cookie_fallback_happened = True
-                new_cmd = []
-                skip = False
-                for c in cmd:
-                    if skip:
-                        skip = False
-                        continue
-                    if c in ("--cookies-from-browser", "--cookies"):
-                        skip = True
-                        continue
-                    new_cmd.append(c)
-                cmd = new_cmd
+                cmd = [c for c in cmd if c not in ("--cookies-from-browser", self.browser)]
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
@@ -380,7 +360,6 @@ class MediaDownloader:
                 self.ytdlp_path,
                 "--no-warnings",
                 "--newline",
-                "--extractor-args", "youtube:player_client=android,ios;skip=webpage",
                 "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "--add-header", f"Referer:{url}",
                 "--add-header", "Sec-Ch-Ua:\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
@@ -394,17 +373,7 @@ class MediaDownloader:
                 "--no-playlist",
             ]
 
-            # Add cookies if cookies.txt exists in root or current directory
-            import os
-            cookies_file = Path(__file__).parent.parent / "cookies.txt"
-            if not cookies_file.exists():
-                cookies_file = Path(os.getcwd()) / "cookies.txt"
-
-            if cookies_file.exists() and use_cookies:
-                logger.info(f"Using cookies from file: {cookies_file}")
-                cmd.extend(["--cookies", str(cookies_file)])
-            elif self.browser and use_cookies:
-                logger.info(f"Using cookies from browser: {self.browser}")
+            if self.browser and use_cookies:
                 cmd.extend(["--cookies-from-browser", self.browser])
 
             if output_type == "audio":
