@@ -2,6 +2,6 @@
 fastapi
 uvicorn
 sqlalchemy
-yt-dlp
+git+https://github.com/yt-dlp/yt-dlp.git@master
 pydantic
 python-multipart
