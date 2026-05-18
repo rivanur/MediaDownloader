@@ -140,10 +140,13 @@ class MediaDownloader:
                 cookies_file = Path(os.getcwd()) / "cookies.txt"
 
             if cookies_file.exists():
-                logger.info(f"Using cookies from file: {cookies_file}")
+                logger.warning(f"DEBUG COOKIES: cookies.txt FOUND at {cookies_file.absolute()} (Size: {cookies_file.stat().st_size} bytes)")
                 cmd.extend(["--cookies", str(cookies_file)])
-            elif self.browser:
-                logger.info(f"Using cookies from browser: {self.browser}")
+            else:
+                logger.warning(f"DEBUG COOKIES: cookies.txt NOT FOUND. Searched at: {cookies_file.absolute()}")
+            
+            if not cookies_file.exists() and self.browser:
+                logger.warning(f"Using cookies from browser: {self.browser}")
                 cmd.extend(["--cookies-from-browser", self.browser])
 
             result = subprocess.run(
@@ -389,10 +392,10 @@ class MediaDownloader:
                 cookies_file = Path(os.getcwd()) / "cookies.txt"
 
             if cookies_file.exists() and use_cookies:
-                logger.info(f"Using cookies from file: {cookies_file}")
+                logger.warning(f"DEBUG COOKIES DOWNLOAD: cookies.txt FOUND at {cookies_file.absolute()} (Size: {cookies_file.stat().st_size} bytes)")
                 cmd.extend(["--cookies", str(cookies_file)])
             elif self.browser and use_cookies:
-                logger.info(f"Using cookies from browser: {self.browser}")
+                logger.warning(f"Using cookies from browser: {self.browser}")
                 cmd.extend(["--cookies-from-browser", self.browser])
 
             if output_type == "audio":
