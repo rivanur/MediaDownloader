@@ -192,8 +192,21 @@ def sanitize_filename_ascii(name: str) -> str:
         clean_stem = "download"
     return f"{clean_stem}{ext}"
 
+def cleanup_file(file_path: str):
+    """Hapus file setelah selesai dikirim ke user (Auto-Cleanup)"""
+    import time
+    try:
+        # Tunggu 5 detik tambahan untuk memastikan FileResponse benar-benar selesai
+        time.sleep(5)
+        path = Path(file_path)
+        if path.exists():
+            path.unlink()
+            logger.info(f"Auto-cleanup: Berhasil menghapus file dari server -> {file_path}")
+    except Exception as e:
+        logger.error(f"Auto-cleanup gagal untuk {file_path}: {e}")
+
 @app.get("/api/download-file/{task_id}")
-def download_file(task_id: int, db: Session = Depends(get_db)):
+def download_file(task_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     task = db.query(DownloadTask).filter(DownloadTask.id == task_id).first()
     if not task or not task.file_path or not Path(task.file_path).exists():
         raise HTTPException(status_code=404, detail="File not found")
@@ -207,8 +220,13 @@ def download_file(task_id: int, db: Session = Depends(get_db)):
         "Content-Disposition": f'attachment; filename="{safe_name}"; filename*=UTF-8\'\'{encoded_name}'
     }
     
+    file_path = task.file_path
+    
+    # Mendaftarkan task penghapusan file setelah video berhasil didownload oleh user
+    background_tasks.add_task(cleanup_file, file_path)
+    
     return FileResponse(
-        path=task.file_path,
+        path=file_path,
         media_type='application/octet-stream',
         headers=headers
     )

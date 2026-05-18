@@ -64,23 +64,7 @@ class MediaDownloader:
 
     def __init__(self, ytdlp_path: str = "yt-dlp"):
         self.ytdlp_path = ytdlp_path
-        # Detect available browser for cookies (Windows focus)
-        self.browser = self._detect_browser()
-        logger.info(f"MediaDownloader initialized (Browser cookies: {self.browser})")
-
-    def _detect_browser(self) -> Optional[str]:
-        """Detect installed browser to steal cookies from (to bypass bot protection)"""
-        import os
-        # Common Windows paths for browsers
-        paths = {
-            "chrome": os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data"),
-            "edge": os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\User Data"),
-            "firefox": os.path.expandvars(r"%APPDATA%\Mozilla\Firefox\Profiles"),
-        }
-        for browser, path in paths.items():
-            if os.path.exists(path):
-                return browser
-        return None
+        logger.info("MediaDownloader initialized (Server Mode - Only using cookies.txt)")
 
     def detect_platform(self, url: str) -> str:
         """Detect platform from URL"""
@@ -167,10 +151,6 @@ class MediaDownloader:
                         logger.warning(f"DEBUG SECRETS ..data CONTENT: {os.listdir('/etc/secrets/..data')}")
                     except Exception as e:
                         logger.warning(f"DEBUG SECRETS DIR ERROR: {str(e)}")
-            
-            if not cookies_file.exists() and self.browser:
-                logger.warning(f"Using cookies from browser: {self.browser}")
-                cmd.extend(["--cookies-from-browser", self.browser])
 
             result = subprocess.run(
                 cmd,
@@ -182,20 +162,6 @@ class MediaDownloader:
             )
 
             cookie_fallback_happened = False
-            # Retry without cookies if cookie database is locked or decryption fails
-            stderr_lower = result.stderr.lower() if result.stderr else ""
-            if result.returncode != 0 and self.browser and ("cookie" in stderr_lower or "dpapi" in stderr_lower or "decrypt" in stderr_lower):
-                logger.warning("Cookie database locked or decryption failed. Retrying without cookies...")
-                cookie_fallback_happened = True
-                cmd = [c for c in cmd if c not in ("--cookies-from-browser", self.browser)]
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    encoding="utf-8",
-                    errors="replace",
-                )
 
             if result.returncode != 0:
                 error_msg = result.stderr.strip()
@@ -344,10 +310,11 @@ class MediaDownloader:
             return {"success": False, "error": str(e)[:200]}
 
     def get_output_dir(self, platform: str) -> Path:
-        """Get the output directory for downloads (Standard Windows Downloads folder)"""
-        from datetime import datetime
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        output_dir = Path.home() / "Downloads" / "MediaDownloader" / platform.capitalize() / date_str
+        """Get the temporary output directory for server-side downloads"""
+        import tempfile
+        # Create a temp directory for downloads that will be cleaned up later
+        base_tmp = Path(tempfile.gettempdir()) / "MediaDownloader"
+        output_dir = base_tmp / platform.capitalize()
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir
 
@@ -434,9 +401,6 @@ class MediaDownloader:
             if cookies_file.exists() and use_cookies:
                 logger.warning(f"DEBUG COOKIES DOWNLOAD: cookies.txt FOUND at {cookies_file.absolute()} (Size: {cookies_file.stat().st_size} bytes)")
                 cmd.extend(["--cookies", str(cookies_file)])
-            elif self.browser and use_cookies:
-                logger.warning(f"Using cookies from browser: {self.browser}")
-                cmd.extend(["--cookies-from-browser", self.browser])
 
             if output_type == "audio":
                 cmd.extend([
@@ -578,18 +542,4 @@ class MediaDownloader:
             size_bytes /= 1024
         return f"{size_bytes:.1f} TB"
 
-    def open_file_in_explorer(self, file_path: str) -> bool:
-        """Open file location in Windows Explorer"""
-        try:
-            import platform
-            path = Path(file_path)
-            if platform.system() == "Windows":
-                subprocess.Popen(["explorer", "/select,", str(path).replace("/", "\\")])
-            elif platform.system() == "Darwin":
-                subprocess.Popen(["open", "-R", str(path)])
-            else:
-                subprocess.Popen(["xdg-open", str(path.parent)])
-            return True
-        except Exception as e:
-            logger.error(f"Error opening explorer: {e}")
-            return False
+
