@@ -135,7 +135,9 @@ class MediaDownloader:
 
             # Add cookies if cookies.txt exists in Render secrets, root, or current directory
             import os
-            cookies_file = Path("/etc/secrets/cookies.txt")
+            cookies_file = Path("/etc/secrets/..data/cookies.txt")
+            if not cookies_file.exists():
+                cookies_file = Path("/etc/secrets/cookies.txt")
             if not cookies_file.exists():
                 cookies_file = Path(__file__).parent.parent / "cookies.txt"
             if not cookies_file.exists():
@@ -394,7 +396,9 @@ class MediaDownloader:
 
             # Add cookies if cookies.txt exists in Render secrets, root, or current directory
             import os
-            cookies_file = Path("/etc/secrets/cookies.txt")
+            cookies_file = Path("/etc/secrets/..data/cookies.txt")
+            if not cookies_file.exists():
+                cookies_file = Path("/etc/secrets/cookies.txt")
             if not cookies_file.exists():
                 cookies_file = Path(__file__).parent.parent / "cookies.txt"
             if not cookies_file.exists():
