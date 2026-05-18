@@ -146,6 +146,11 @@ class MediaDownloader:
                 cmd.extend(["--cookies", str(cookies_file)])
             else:
                 logger.warning(f"DEBUG COOKIES: cookies.txt NOT FOUND. Searched at: {cookies_file.absolute()}")
+                if os.path.exists("/etc/secrets"):
+                    try:
+                        logger.warning(f"DEBUG SECRETS DIR CONTENT: {os.listdir('/etc/secrets')}")
+                    except Exception as e:
+                        logger.warning(f"DEBUG SECRETS DIR ERROR: {str(e)}")
             
             if not cookies_file.exists() and self.browser:
                 logger.warning(f"Using cookies from browser: {self.browser}")
