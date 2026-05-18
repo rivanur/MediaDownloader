@@ -16,7 +16,7 @@ import LegalModal from './components/Modals/LegalModal';
 
 const API_BASE = import.meta.env.DEV
   ? "http://127.0.0.1:8888/api"
-  : "/api";
+  : (import.meta.env.VITE_API_BASE || "/api");
 
 function App() {
   const [url, setUrl] = useState('');
