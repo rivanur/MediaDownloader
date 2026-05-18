@@ -143,6 +143,18 @@ class MediaDownloader:
             if not cookies_file.exists():
                 cookies_file = Path(os.getcwd()) / "cookies.txt"
 
+            # Check if cookies text is passed in environment variables (resilient fallback!)
+            env_cookies = os.environ.get("cookies.txt") or os.environ.get("COOKIES") or os.environ.get("COOKIES_TEXT")
+            if env_cookies and not cookies_file.exists():
+                logger.warning("DEBUG COOKIES: Found cookies text in Environment Variables! Writing to temp file...")
+                temp_cookies = Path("/tmp/cookies.txt")
+                try:
+                    temp_cookies.parent.mkdir(exist_ok=True)
+                    temp_cookies.write_text(env_cookies)
+                    cookies_file = temp_cookies
+                except Exception as e:
+                    logger.warning(f"DEBUG COOKIES: Failed to write temp cookies from env: {str(e)}")
+
             if cookies_file.exists():
                 logger.warning(f"DEBUG COOKIES: cookies.txt FOUND at {cookies_file.absolute()} (Size: {cookies_file.stat().st_size} bytes)")
                 cmd.extend(["--cookies", str(cookies_file)])
@@ -404,6 +416,18 @@ class MediaDownloader:
                 cookies_file = Path(__file__).parent.parent / "cookies.txt"
             if not cookies_file.exists():
                 cookies_file = Path(os.getcwd()) / "cookies.txt"
+
+            # Check if cookies text is passed in environment variables (resilient fallback!)
+            env_cookies = os.environ.get("cookies.txt") or os.environ.get("COOKIES") or os.environ.get("COOKIES_TEXT")
+            if env_cookies and not cookies_file.exists():
+                logger.warning("DEBUG COOKIES: Found cookies text in Environment Variables! Writing to temp file...")
+                temp_cookies = Path("/tmp/cookies.txt")
+                try:
+                    temp_cookies.parent.mkdir(exist_ok=True)
+                    temp_cookies.write_text(env_cookies)
+                    cookies_file = temp_cookies
+                except Exception as e:
+                    logger.warning(f"DEBUG COOKIES: Failed to write temp cookies from env: {str(e)}")
 
             if cookies_file.exists() and use_cookies:
                 logger.warning(f"DEBUG COOKIES DOWNLOAD: cookies.txt FOUND at {cookies_file.absolute()} (Size: {cookies_file.stat().st_size} bytes)")
