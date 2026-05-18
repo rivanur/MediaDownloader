@@ -151,6 +151,7 @@ class MediaDownloader:
                 if os.path.exists("/etc/secrets"):
                     try:
                         logger.warning(f"DEBUG SECRETS DIR CONTENT: {os.listdir('/etc/secrets')}")
+                        logger.warning(f"DEBUG SECRETS ..data CONTENT: {os.listdir('/etc/secrets/..data')}")
                     except Exception as e:
                         logger.warning(f"DEBUG SECRETS DIR ERROR: {str(e)}")
             
