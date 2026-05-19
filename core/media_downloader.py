@@ -457,20 +457,20 @@ class MediaDownloader:
             if format_id.startswith("apify-youtube-"):
                 logger.info("Downloading YouTube video via Apify actor...")
                 if progress_callback:
-                    progress_callback(10, "0 B/s", "00:15", "Menghubungkan ke Apify...")
+                    progress_callback(10, "0 B/s", "00:15", "Menghubungkan ke Apify (membutuhkan waktu 30-40 detik)...")
 
                 apify_res = self._run_apify_actor(
-                    "philippe.trounev/youtube-video-audio-and-transcript-downloader-actor",
-                    {"urls": [{"url": url}]}
+                    "streamers/youtube-video-downloader",
+                    {"videos": [{"url": url}]}
                 )
 
                 if not apify_res or len(apify_res) == 0:
                     return {"success": False, "error": "Gagal mendapatkan link download dari Apify."}
 
                 item = apify_res[0]
-                direct_url = item.get("audioUrl") if output_type == "audio" else item.get("videoUrl")
+                direct_url = item.get("audioOnlyUrl") if output_type == "audio" else item.get("downloadedFileUrl")
                 if not direct_url:
-                    direct_url = item.get("videoUrl") or item.get("audioUrl")
+                    direct_url = item.get("downloadedFileUrl") or item.get("videoOnlyUrl") or item.get("audioOnlyUrl")
 
                 if not direct_url:
                     return {"success": False, "error": "Link video/audio tidak ditemukan dalam response Apify."}
