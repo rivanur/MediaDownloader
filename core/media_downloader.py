@@ -6,6 +6,8 @@ import logging
 import re
 import subprocess
 import json
+import urllib.request
+import urllib.parse
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 
@@ -91,6 +93,40 @@ class MediaDownloader:
             logger.error(f"yt-dlp not found: {e}")
             return False
 
+    def _run_apify_actor(self, actor_id: str, input_data: dict) -> Optional[list]:
+        """Run an Apify actor synchronously and return the dataset items"""
+        import os
+        api_token = os.environ.get("APIFY_API_TOKEN")
+        if not api_token:
+            token_path = Path(__file__).parent.parent / "apify_token.txt"
+            if token_path.exists():
+                try:
+                    api_token = token_path.read_text().strip()
+                except Exception as e:
+                    logger.error(f"Failed to read apify_token.txt: {e}")
+        
+        if not api_token:
+            logger.error("Apify API Token not found! Please set APIFY_API_TOKEN environment variable or create apify_token.txt.")
+            return None
+        actor_id_clean = actor_id.replace("/", "~")
+        url = f"https://api.apify.com/v2/acts/{actor_id_clean}/run-sync-get-dataset-items?token={api_token}"
+        
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(input_data).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        try:
+            logger.info(f"Triggering Apify actor {actor_id}...")
+            with urllib.request.urlopen(req, timeout=90) as response:
+                items = json.loads(response.read().decode("utf-8"))
+                logger.info(f"Apify actor {actor_id} run completed. Got {len(items)} items.")
+                return items
+        except Exception as e:
+            logger.error(f"Apify actor {actor_id} failed: {e}")
+            return None
+
     def get_info_and_formats(self, url: str) -> Dict[str, Any]:
         """
         Fetch video info + all available formats from URL.
@@ -99,6 +135,75 @@ class MediaDownloader:
             Dict with title, thumbnail, duration, uploader, platform,
             video_formats list, audio_formats list
         """
+        platform = self.detect_platform(url)
+
+        # YouTube intercept using 3-layer fallback
+        if platform == "youtube":
+            title = None
+            uploader = None
+            thumbnail = None
+
+            # Layer 1: YouTube native oEmbed
+            try:
+                oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url)}&format=json"
+                req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                    title = data.get("title")
+                    uploader = data.get("author_name")
+                    thumbnail = data.get("thumbnail_url")
+                    logger.info("YouTube metadata: native oEmbed succeeded")
+            except Exception as e:
+                logger.warning(f"YouTube native oEmbed failed: {e}")
+
+            # Layer 2: noembed.com (third-party proxy)
+            if not title:
+                try:
+                    noembed_url = f"https://noembed.com/embed?url={urllib.parse.quote(url)}"
+                    req = urllib.request.Request(noembed_url, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        data = json.loads(response.read().decode("utf-8"))
+                        title = data.get("title")
+                        uploader = data.get("author_name")
+                        thumbnail = data.get("thumbnail_url")
+                        logger.info("YouTube metadata: noembed.com succeeded")
+                except Exception as e:
+                    logger.warning(f"YouTube noembed.com failed: {e}")
+
+            # Layer 3: Manual extraction from video ID
+            if not title:
+                try:
+                    video_id_match = re.search(r"(?:v=|youtu\.be/|shorts/)([a-zA-Z0-9_-]{11})", url)
+                    if video_id_match:
+                        video_id = video_id_match.group(1)
+                        title = "YouTube Video"
+                        uploader = "YouTube Creator"
+                        thumbnail = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+                        logger.info(f"YouTube metadata: manual extraction for video ID {video_id}")
+                except Exception as e:
+                    logger.warning(f"YouTube manual extraction failed: {e}")
+
+            if title:
+                return {
+                    "success": True,
+                    "title": title,
+                    "thumbnail": thumbnail or "",
+                    "duration": 0,
+                    "uploader": uploader or "YouTube Creator",
+                    "platform": "youtube",
+                    "video_formats": [
+                        {"format_id": "apify-youtube-1080", "label": "1080p MP4 (Apify)", "ext": "mp4", "resolution": "1920x1080", "height": 1080, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
+                        {"format_id": "apify-youtube-720", "label": "720p MP4 (Apify)", "ext": "mp4", "resolution": "1280x720", "height": 720, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
+                        {"format_id": "apify-youtube-480", "label": "480p MP4 (Apify)", "ext": "mp4", "resolution": "854x480", "height": 480, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
+                        {"format_id": "apify-youtube-360", "label": "360p MP4 (Apify)", "ext": "mp4", "resolution": "640x360", "height": 360, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
+                    ],
+                    "audio_formats": [
+                        {"format_id": "apify-youtube-audio", "label": "MP3 Audio (Apify)", "ext": "mp3", "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"}
+                    ]
+                }
+            else:
+                return {"success": False, "error": "URL YouTube tidak valid atau video tidak ditemukan."}
+
         try:
             cmd = [
                 self.ytdlp_path,
@@ -131,6 +236,48 @@ class MediaDownloader:
                 error_msg = result.stderr.strip()
                 # Map yt-dlp errors to user-friendly messages
                 err_lower = error_msg.lower()
+
+                # Check if it is Instagram. If so, fall back to Apify scraper!
+                if platform == "instagram":
+                    logger.info("Instagram yt-dlp failed, falling back to Apify...")
+                    apify_res = self._run_apify_actor(
+                        "apify/instagram-scraper",
+                        {
+                            "directUrls": [url],
+                            "resultsType": "details"
+                        }
+                    )
+                    if apify_res and len(apify_res) > 0:
+                        item = apify_res[0]
+                        title = item.get("caption") or "Instagram Post"
+                        if len(title) > 60:
+                            title = title[:60] + "..."
+                        thumbnail = item.get("displayUrl") or ""
+                        uploader = item.get("ownerUsername") or "Instagram User"
+                        video_url = item.get("videoUrl")
+                        
+                        if video_url:
+                            return {
+                                "success": True,
+                                "title": title,
+                                "thumbnail": thumbnail,
+                                "duration": 0,
+                                "uploader": uploader,
+                                "platform": "instagram",
+                                "video_formats": [
+                                    {
+                                        "format_id": f"apify-direct-{video_url}",
+                                        "label": "Kualitas Terbaik (Apify)",
+                                        "ext": "mp4",
+                                        "resolution": "Auto",
+                                        "height": 720,
+                                        "filesize": 0,
+                                        "filesize_approx": "Ukuran tidak diketahui"
+                                    }
+                                ],
+                                "audio_formats": []
+                            }
+
                 if "unsupported url" in err_lower or "not supported" in err_lower:
                     platform_guess = self.detect_platform(url)
                     if platform_guess == "threads":
@@ -306,6 +453,41 @@ class MediaDownloader:
             Dict with success, file_path, file_size, error
         """
         try:
+            # Apify format overrides
+            if format_id.startswith("apify-youtube-"):
+                logger.info("Downloading YouTube video via Apify actor...")
+                if progress_callback:
+                    progress_callback(10, "0 B/s", "00:15", "Menghubungkan ke Apify...")
+
+                apify_res = self._run_apify_actor(
+                    "philippe.trounev/youtube-video-audio-and-transcript-downloader-actor",
+                    {"urls": [{"url": url}]}
+                )
+
+                if not apify_res or len(apify_res) == 0:
+                    return {"success": False, "error": "Gagal mendapatkan link download dari Apify."}
+
+                item = apify_res[0]
+                direct_url = item.get("audioUrl") if output_type == "audio" else item.get("videoUrl")
+                if not direct_url:
+                    direct_url = item.get("videoUrl") or item.get("audioUrl")
+
+                if not direct_url:
+                    return {"success": False, "error": "Link video/audio tidak ditemukan dalam response Apify."}
+
+                logger.info(f"Apify returned direct URL: {direct_url[:100]}...")
+                if progress_callback:
+                    progress_callback(30, "0 B/s", "00:05", "Mengunduh file dari CDN...")
+
+                url = direct_url
+                format_id = "best"
+
+            elif format_id.startswith("apify-direct-"):
+                direct_url = format_id.replace("apify-direct-", "")
+                logger.info(f"Downloading direct URL: {direct_url[:100]}...")
+                url = direct_url
+                format_id = "best"
+
             # Use custom dir if provided, else use default structured dir
             if custom_output_dir:
                 output_dir = Path(custom_output_dir)
