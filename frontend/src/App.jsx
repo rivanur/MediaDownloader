@@ -58,7 +58,7 @@ function App() {
     setError('');
 
     try {
-      const response = await axios.post(`${API_BASE}/info`, { url: url.trim() }, { timeout: 30000 });
+      const response = await axios.post(`${API_BASE}/info`, { url: url.trim() }, { timeout: 120000 });
       if (response.data.success) {
         setVideoInfo(response.data.data);
       } else {
