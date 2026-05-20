@@ -14,9 +14,7 @@ import HelpModal from './components/Modals/HelpModal';
 import GuideModal from './components/Modals/GuideModal';
 import LegalModal from './components/Modals/LegalModal';
 
-const API_BASE = import.meta.env.DEV
-  ? "http://127.0.0.1:8888/api"
-  : "https://mediadownloader-t994.onrender.com/api";
+const API_BASE = "https://mediadownloader-t994.onrender.com/api";
 
 function App() {
   const [url, setUrl] = useState('');
