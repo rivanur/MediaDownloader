@@ -388,7 +388,6 @@ class MediaDownloader:
                     raw_preview = info.get("url")
 
                 if raw_preview:
-                    import urllib.parse
                     preview_url = f"/proxy-video?url={urllib.parse.quote(raw_preview, safe='')}"
 
 
