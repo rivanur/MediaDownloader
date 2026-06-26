@@ -109,7 +109,7 @@ class MediaDownloader:
             logger.error("Apify API Token not found! Please set APIFY_API_TOKEN environment variable or create apify_token.txt.")
             return None
         actor_id_clean = actor_id.replace("/", "~")
-        url = f"https://api.apify.com/v2/acts/{actor_id_clean}/run-sync-get-dataset-items?token={api_token}"
+        url = f"https://api.apify.com/v2/acts/{actor_id_clean}/run-sync-get-dataset-items?token={api_token}&memory=256"
         
         req = urllib.request.Request(
             url,
@@ -119,7 +119,8 @@ class MediaDownloader:
         )
         try:
             logger.info(f"Triggering Apify actor {actor_id}...")
-            with urllib.request.urlopen(req, timeout=90) as response:
+            # Menambah timeout dari 90 detik ke 300 detik (5 menit) karena RAM rendah membuat proses lebih lama
+            with urllib.request.urlopen(req, timeout=300) as response:
                 items = json.loads(response.read().decode("utf-8"))
                 logger.info(f"Apify actor {actor_id} run completed. Got {len(items)} items.")
                 return items
@@ -244,7 +245,8 @@ class MediaDownloader:
                         "apify/instagram-scraper",
                         {
                             "directUrls": [url],
-                            "resultsType": "details"
+                            "resultsType": "details",
+                            "resultsLimit": 1
                         }
                     )
                     if apify_res and len(apify_res) > 0:
@@ -460,7 +462,11 @@ class MediaDownloader:
 
                 apify_res = self._run_apify_actor(
                     "streamers/youtube-video-downloader",
-                    {"videos": [{"url": url}]}
+                    {
+                        "videos": [{"url": url}],
+                        "maxItems": 1,
+                        "downloadSubtitles": False
+                    }
                 )
 
                 if not apify_res or len(apify_res) == 0:
