@@ -299,7 +299,7 @@ def proxy_video(url: str):
     return StreamingResponse(stream(), media_type="video/mp4")
 
 # Serve Frontend
-frontend_path = Path(__file__).parent.parent / "frontend" / "dist"
+frontend_path = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
 if frontend_path.exists():
     app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
 else:
@@ -308,4 +308,6 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    # Deteksi port dari environment (wajib untuk server production seperti Render/Heroku)
+    port = int(os.environ.get("PORT", 8888))
+    uvicorn.run(app, host="0.0.0.0", port=port)

@@ -98,18 +98,23 @@ class MediaDownloader:
         import os
         api_token = os.environ.get("APIFY_API_TOKEN")
         if not api_token:
-            token_path = Path(__file__).parent.parent / "apify_token.txt"
-            if token_path.exists():
+            # Mencari file .env di backend/
+            env_path = Path(__file__).parent.parent.parent / ".env"
+            if env_path.exists():
                 try:
-                    api_token = token_path.read_text().strip()
+                    for line in env_path.read_text().splitlines():
+                        if line.startswith("APIFY_API_TOKEN="):
+                            api_token = line.split("=", 1)[1].strip()
+                            break
                 except Exception as e:
-                    logger.error(f"Failed to read apify_token.txt: {e}")
+                    logger.error(f"Failed to read .env: {e}")
         
         if not api_token:
             logger.error("Apify API Token not found! Please set APIFY_API_TOKEN environment variable or create apify_token.txt.")
             return None
         actor_id_clean = actor_id.replace("/", "~")
-        url = f"https://api.apify.com/v2/acts/{actor_id_clean}/run-sync-get-dataset-items?token={api_token}&memory=256"
+        # Strategi 1: Membatasi memori ke 1024MB (1GB) agar biaya Apify lebih hemat tanpa menyebabkan error
+        url = f"https://api.apify.com/v2/acts/{actor_id_clean}/run-sync-get-dataset-items?token={api_token}&memory=1024"
         
         req = urllib.request.Request(
             url,
@@ -246,7 +251,11 @@ class MediaDownloader:
                         {
                             "directUrls": [url],
                             "resultsType": "details",
-                            "resultsLimit": 1
+                            "resultsLimit": 1,
+                            # Strategi 3 untuk Instagram: Mematikan pencarian mendalam & komentar
+                            "searchLimit": 1,
+                            "addParentData": False,
+                            "proxy": {"useApifyProxy": True}
                         }
                     )
                     if apify_res and len(apify_res) > 0:
@@ -465,7 +474,10 @@ class MediaDownloader:
                     {
                         "videos": [{"url": url}],
                         "maxItems": 1,
-                        "downloadSubtitles": False
+                        "downloadSubtitles": False,
+                        "downloadComments": False,
+                        "downloadTranscripts": False,
+                        "proxy": {"useApifyProxy": True}
                     }
                 )
 
@@ -473,7 +485,10 @@ class MediaDownloader:
                     return {"success": False, "error": "Gagal mendapatkan link download dari Apify."}
 
                 item = apify_res[0]
-                direct_url = item.get("audioOnlyUrl") if output_type == "audio" else item.get("downloadedFileUrl")
+                if output_type == "audio":
+                    direct_url = item.get("audioOnlyUrl") or item.get("audioUrl") or item.get("url")
+                else:
+                    direct_url = item.get("downloadedFileUrl") or item.get("downloadUrl") or item.get("videoUrl") or item.get("url")
                 if not direct_url:
                     direct_url = item.get("downloadedFileUrl") or item.get("videoOnlyUrl") or item.get("audioOnlyUrl")
 

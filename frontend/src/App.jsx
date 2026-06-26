@@ -14,7 +14,8 @@ import HelpModal from './components/Modals/HelpModal';
 import GuideModal from './components/Modals/GuideModal';
 import LegalModal from './components/Modals/LegalModal';
 
-const API_BASE = "https://mediadownloader-t994.onrender.com/api";
+// Otomatis mengambil URL dari file .env (lokal) atau .env.production (server)
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
 function App() {
   const [url, setUrl] = useState('');
