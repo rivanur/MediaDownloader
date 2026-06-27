@@ -580,42 +580,83 @@ class MediaDownloader:
             Dict with success, file_path, file_size, error
         """
         try:
-            # Smart Direct Link Handler
+            # Smart Direct Link Handler (Bypass yt-dlp to avoid 403 Forbidden on Cloud/Vercel)
+            direct_url = None
             if format_id.startswith("rapid_direct:"):
                 direct_url = format_id.replace("rapid_direct:", "", 1)
-                logger.info(f"Downloading YouTube video via direct RapidAPI link...")
-                if progress_callback:
-                    progress_callback(10, "0 B/s", "00:03", "Mengunduh file dari CDN...")
-
-                url = direct_url
-                format_id = "best"
-                
-            # RapidAPI format overrides for YouTube (Legacy fallback)
             elif format_id.startswith("rapidapi-youtube-"):
-                logger.info("Downloading YouTube video via RapidAPI (Legacy fallback)...")
-                if progress_callback:
-                    progress_callback(10, "0 B/s", "00:05", "Menghubungkan ke RapidAPI (super cepat)...")
-
                 ytstream = self._get_ytstream_info(url)
-                direct_url = None
                 if ytstream:
                     direct_url = ytstream.get("audio_url") if output_type == "audio" else ytstream.get("video_url")
-
-                if not direct_url:
-                    return {"success": False, "error": "Gagal mendapatkan link download dari RapidAPI."}
-
-                logger.info(f"RapidAPI returned direct URL: {direct_url[:100]}...")
-                if progress_callback:
-                    progress_callback(30, "0 B/s", "00:03", "Mengunduh file dari CDN...")
-
-                url = direct_url
-                format_id = "best"
-
             elif format_id.startswith("apify-direct-"):
-                direct_url = format_id.replace("apify-direct-", "")
-                logger.info(f"Downloading direct URL: {direct_url[:100]}...")
-                url = direct_url
-                format_id = "best"
+                direct_url = format_id.replace("apify-direct-", "", 1)
+                
+            if direct_url:
+                logger.info(f"Downloading direct URL via python urllib to bypass yt-dlp generic 403...")
+                if progress_callback:
+                    progress_callback(10, "0 B/s", "00:03", "Mengunduh file langsung dari CDN...")
+                
+                # Setup output dir
+                if custom_output_dir:
+                    output_dir = Path(custom_output_dir)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                else:
+                    output_dir = self.get_output_dir(platform)
+                    
+                import time
+                import urllib.request
+                import urllib.error
+                
+                filename = f"rapidapi_download_{int(time.time())}.{output_ext}"
+                filepath = output_dir / filename
+                
+                req = urllib.request.Request(direct_url, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Accept": "*/*",
+                    "Referer": "https://www.youtube.com/"
+                })
+                
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as response, open(filepath, 'wb') as out_file:
+                        total_size = int(response.info().get("Content-Length", 0))
+                        downloaded = 0
+                        block_size = 1024 * 64 # 64KB blocks
+                        start_time = time.time()
+                        last_update = 0
+                        
+                        while True:
+                            buffer = response.read(block_size)
+                            if not buffer:
+                                break
+                            downloaded += len(buffer)
+                            out_file.write(buffer)
+                            
+                            now = time.time()
+                            if now - last_update > 0.5:
+                                last_update = now
+                                if total_size > 0:
+                                    percent = (downloaded / total_size) * 100
+                                    speed = downloaded / (now - start_time) if now - start_time > 0 else 0
+                                    speed_str = f"{self._format_bytes(speed)}/s"
+                                    
+                                    if progress_callback:
+                                        progress_callback(int(percent), speed_str, "00:00", self._format_bytes(total_size))
+                                        
+                    if progress_callback:
+                        progress_callback(100, "0 B/s", "00:00", self._format_bytes(total_size) if total_size else "0 B")
+                        
+                    return {
+                        "success": True,
+                        "file_path": str(filepath),
+                        "file_size": total_size if total_size > 0 else filepath.stat().st_size,
+                        "error": None
+                    }
+                except urllib.error.HTTPError as e:
+                    logger.error(f"HTTPError on direct download: {e.code} {e.reason}")
+                    return {"success": False, "error": f"Gagal mendownload dari CDN (HTTP {e.code}). Link mungkin kadaluarsa."}
+                except Exception as e:
+                    logger.error(f"Error on direct download: {e}")
+                    return {"success": False, "error": f"Gagal mendownload dari CDN: {str(e)}"}
 
             # Use custom dir if provided, else use default structured dir
             if custom_output_dir:
