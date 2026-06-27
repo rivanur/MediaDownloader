@@ -164,6 +164,15 @@ def _run_download(task_id: int, url: str, format_id: str, output_type: str,
             task.file_size = result.get("file_size", 0)
             task.completed_at = datetime.utcnow()
             db.commit()
+            
+            # Special check for direct URL handoff
+            if result.get("is_direct_url"):
+                _push_event(task_id, "direct_link", {
+                    "url": result["file_path"]
+                })
+                # Prevent standard completed event from trying to download stream
+                return
+                
             _push_event(task_id, "completed", {
                 "status": "completed",
                 "task_id": task_id,

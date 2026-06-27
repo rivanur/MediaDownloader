@@ -115,6 +115,18 @@ function App() {
           size: msg.data.file_size
         });
         setDlStatus(`Mendownload ${msg.data.file_size}...`);
+      } else if (msg.type === 'direct_link') {
+        setProgress(100);
+        setDlStatus('Video dibuka di tab baru...');
+        
+        // Buka di tab baru (Client-Side Handoff)
+        window.open(msg.data.url, '_blank');
+        
+        // Tampilkan panduan cara save
+        alert("PENTING: Video telah dibuka di Tab Baru untuk menghindari blokir Google.\n\nSilakan pergi ke tab baru tersebut, lalu:\n- Di PC: Klik Kanan pada video -> 'Save Video As...'\n- Di HP: Tekan Tahan pada video -> 'Download Video'");
+        
+        setDownloading(false);
+        eventSource.close();
       } else if (msg.type === 'completed') {
         setProgress(100);
         setDlStatus('Hampir selesai...');

@@ -274,46 +274,6 @@ class MediaDownloader:
                     logger.warning(f"YouTube manual extraction failed: {e}")
 
             if title:
-                # Ambil info dari RapidAPI untuk mendapat resolusi akurat dan direct link
-                ytstream = self._get_ytstream_info(url)
-                
-                video_formats = []
-                audio_formats = []
-                
-                if ytstream and ytstream.get("video_url"):
-                    vh = ytstream.get("video_height", 360)
-                    video_formats.append({
-                        "format_id": f"rapid_direct:{ytstream['video_url']}", 
-                        "label": f"{vh}p MP4 (RapidAPI Cepat)", 
-                        "ext": "mp4", 
-                        "resolution": f"{vh}p", 
-                        "height": vh, 
-                        "filesize": 0, 
-                        "filesize_approx": "Ukuran tidak diketahui"
-                    })
-                else:
-                    video_formats = [
-                        {"format_id": "rapidapi-youtube-1080", "label": "1080p MP4 (RapidAPI)", "ext": "mp4", "resolution": "1920x1080", "height": 1080, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
-                        {"format_id": "rapidapi-youtube-720", "label": "720p MP4 (RapidAPI)", "ext": "mp4", "resolution": "1280x720", "height": 720, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
-                        {"format_id": "rapidapi-youtube-480", "label": "480p MP4 (RapidAPI)", "ext": "mp4", "resolution": "854x480", "height": 480, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
-                        {"format_id": "rapidapi-youtube-360", "label": "360p MP4 (RapidAPI)", "ext": "mp4", "resolution": "640x360", "height": 360, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
-                    ]
-                    
-                if ytstream and ytstream.get("audio_url"):
-                    abr = ytstream.get("audio_abr", 128)
-                    audio_formats.append({
-                        "format_id": f"rapid_direct:{ytstream['audio_url']}", 
-                        "label": f"MP3 Audio (RapidAPI Cepat)", 
-                        "ext": "mp3",
-                        "abr": abr,
-                        "filesize": 0, 
-                        "filesize_approx": "Ukuran tidak diketahui"
-                    })
-                else:
-                    audio_formats = [
-                        {"format_id": "rapidapi-youtube-audio", "label": "MP3 Audio (RapidAPI)", "ext": "mp3", "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"}
-                    ]
-
                 return {
                     "success": True,
                     "title": title,
@@ -321,8 +281,26 @@ class MediaDownloader:
                     "duration": 0,
                     "uploader": uploader or "YouTube Creator",
                     "platform": "youtube",
-                    "video_formats": video_formats,
-                    "audio_formats": audio_formats,
+                    "video_formats": [
+                        {
+                            "format_id": "rapidapi-youtube-best", 
+                            "label": "Download MP4 (Kualitas Terbaik)", 
+                            "ext": "mp4", 
+                            "resolution": "Terbaik", 
+                            "height": 720, 
+                            "filesize": 0, 
+                            "filesize_approx": "Cepat & Anti Blokir"
+                        }
+                    ],
+                    "audio_formats": [
+                        {
+                            "format_id": "rapidapi-youtube-audio", 
+                            "label": "MP3 Audio (Kualitas Terbaik)", 
+                            "ext": "mp3", 
+                            "filesize": 0, 
+                            "filesize_approx": "Cepat & Anti Blokir"
+                        }
+                    ]
                 }
             else:
                 return {"success": False, "error": "URL YouTube tidak valid atau video tidak ditemukan."}
@@ -580,7 +558,7 @@ class MediaDownloader:
             Dict with success, file_path, file_size, error
         """
         try:
-            # Smart Direct Link Handler (Bypass yt-dlp to avoid 403 Forbidden on Cloud/Vercel)
+            # Smart Direct Link Handler (Client-Side Handoff to avoid 403 Forbidden on Cloud/Vercel)
             direct_url = None
             if format_id.startswith("rapid_direct:"):
                 direct_url = format_id.replace("rapid_direct:", "", 1)
@@ -592,71 +570,18 @@ class MediaDownloader:
                 direct_url = format_id.replace("apify-direct-", "", 1)
                 
             if direct_url:
-                logger.info(f"Downloading direct URL via python urllib to bypass yt-dlp generic 403...")
+                logger.info(f"Handing off direct URL to client to bypass Vercel 403...")
                 if progress_callback:
-                    progress_callback(10, "0 B/s", "00:03", "Mengunduh file langsung dari CDN...")
+                    progress_callback(100, "0 B/s", "00:00", "Mengalihkan ke browser...")
                 
-                # Setup output dir
-                if custom_output_dir:
-                    output_dir = Path(custom_output_dir)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                else:
-                    output_dir = self.get_output_dir(platform)
-                    
-                import time
-                import urllib.request
-                import urllib.error
-                
-                filename = f"rapidapi_download_{int(time.time())}.{output_ext}"
-                filepath = output_dir / filename
-                
-                req = urllib.request.Request(direct_url, headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    "Accept": "*/*",
-                    "Referer": "https://www.youtube.com/"
-                })
-                
-                try:
-                    with urllib.request.urlopen(req, timeout=30) as response, open(filepath, 'wb') as out_file:
-                        total_size = int(response.info().get("Content-Length", 0))
-                        downloaded = 0
-                        block_size = 1024 * 64 # 64KB blocks
-                        start_time = time.time()
-                        last_update = 0
-                        
-                        while True:
-                            buffer = response.read(block_size)
-                            if not buffer:
-                                break
-                            downloaded += len(buffer)
-                            out_file.write(buffer)
-                            
-                            now = time.time()
-                            if now - last_update > 0.5:
-                                last_update = now
-                                if total_size > 0:
-                                    percent = (downloaded / total_size) * 100
-                                    speed = downloaded / (now - start_time) if now - start_time > 0 else 0
-                                    speed_str = f"{self._format_bytes(speed)}/s"
-                                    
-                                    if progress_callback:
-                                        progress_callback(int(percent), speed_str, "00:00", self._format_bytes(total_size))
-                                        
-                    if progress_callback:
-                        progress_callback(100, "0 B/s", "00:00", self._format_bytes(total_size) if total_size else "0 B")
-                        
-                    return {
-                        "success": True,
-                        "file_path": str(filepath),
-                        "file_size": total_size if total_size > 0 else filepath.stat().st_size,
-                        "error": None
-                    }
-                except urllib.error.HTTPError as e:
-                    logger.error(f"HTTPError on direct download: {e.code} {e.reason}")
-                    return {"success": False, "error": f"Gagal mendownload dari CDN (HTTP {e.code}). Link mungkin kadaluarsa."}
-                except Exception as e:
-                    logger.error(f"Error on direct download: {e}")
-                    return {"success": False, "error": f"Gagal mendownload dari CDN: {str(e)}"}
+                # Kita TIDAK mendownloadnya di server, melainkan memberikan URL ke Frontend
+                return {
+                    "success": True,
+                    "file_path": direct_url,
+                    "file_size": 0,
+                    "is_direct_url": True, # Tanda khusus untuk Frontend
+                    "error": None
+                }
 
             # Use custom dir if provided, else use default structured dir
             if custom_output_dir:
