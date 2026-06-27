@@ -133,6 +133,90 @@ class MediaDownloader:
             logger.error(f"Apify actor {actor_id} failed: {e}")
             return None
 
+    def _get_ytstream_info(self, url: str) -> Optional[Dict[str, Any]]:
+        """Run RapidAPI YTStream and return dict of best video and audio"""
+        import os
+        import re
+        import json
+        import urllib.request
+        import urllib.parse
+        
+        # Ekstrak ID Video (karena YTStream butuh parameter 'id' bukan 'url')
+        video_id = None
+        match = re.search(r"(?:v=|youtu\.be/|shorts/)([a-zA-Z0-9_-]{11})", url)
+        if match:
+            video_id = match.group(1)
+        
+        if not video_id:
+            logger.error("Could not extract Video ID for RapidAPI")
+            return None
+            
+        api_key = os.environ.get("RAPIDAPI_KEY")
+        if not api_key:
+            env_path = Path(__file__).parent.parent.parent / ".env"
+            if env_path.exists():
+                try:
+                    for line in env_path.read_text().splitlines():
+                        if line.startswith("RAPIDAPI_KEY="):
+                            api_key = line.split("=", 1)[1].strip()
+                            break
+                except Exception as e:
+                    logger.error(f"Failed to read .env for RapidAPI: {e}")
+        
+        if not api_key:
+            logger.error("RapidAPI Key not found! Please set RAPIDAPI_KEY environment variable.")
+            return None
+            
+        params = {
+            "id": video_id
+        }
+        
+        query_string = urllib.parse.urlencode(params)
+        req = urllib.request.Request(
+            f"https://ytstream-download-youtube-videos.p.rapidapi.com/dl?{query_string}",
+            headers={
+                "x-rapidapi-key": api_key,
+                "x-rapidapi-host": "ytstream-download-youtube-videos.p.rapidapi.com"
+            }
+        )
+        
+        try:
+            logger.info(f"Triggering YTStream RapidAPI for video {video_id}...")
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                
+                formats = data.get("formats", [])
+                adaptive = data.get("adaptiveFormats", [])
+                
+                result = {}
+                
+                # Best Video (Muxed)
+                video_formats = [f for f in formats if "video/mp4" in f.get("mimeType", "")]
+                if video_formats:
+                    best_video = sorted(video_formats, key=lambda x: int(x.get("height", 0)), reverse=True)[0]
+                    result["video_url"] = best_video.get("url")
+                    result["video_height"] = best_video.get("height", 360)
+                elif formats:
+                    result["video_url"] = formats[0].get("url")
+                    result["video_height"] = formats[0].get("height", 360)
+                    
+                # Best Audio
+                audio_formats = [f for f in adaptive if "audio" in f.get("mimeType", "")]
+                if audio_formats:
+                    best_audio = sorted(audio_formats, key=lambda x: int(x.get("bitrate", 0)), reverse=True)[0]
+                    result["audio_url"] = best_audio.get("url")
+                    result["audio_abr"] = round(int(best_audio.get("bitrate", 128000)) / 1000)
+                    
+                return result
+                
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8')
+            logger.error(f"RapidAPI failed (HTTP {e.code}): {error_body}")
+            return None
+        except Exception as e:
+            logger.error(f"RapidAPI failed: {e}")
+            return None
+
     def get_info_and_formats(self, url: str) -> Dict[str, Any]:
         """
         Fetch video info + all available formats from URL.
@@ -190,6 +274,46 @@ class MediaDownloader:
                     logger.warning(f"YouTube manual extraction failed: {e}")
 
             if title:
+                # Ambil info dari RapidAPI untuk mendapat resolusi akurat dan direct link
+                ytstream = self._get_ytstream_info(url)
+                
+                video_formats = []
+                audio_formats = []
+                
+                if ytstream and ytstream.get("video_url"):
+                    vh = ytstream.get("video_height", 360)
+                    video_formats.append({
+                        "format_id": f"rapid_direct:{ytstream['video_url']}", 
+                        "label": f"{vh}p MP4 (RapidAPI Cepat)", 
+                        "ext": "mp4", 
+                        "resolution": f"{vh}p", 
+                        "height": vh, 
+                        "filesize": 0, 
+                        "filesize_approx": "Ukuran tidak diketahui"
+                    })
+                else:
+                    video_formats = [
+                        {"format_id": "rapidapi-youtube-1080", "label": "1080p MP4 (RapidAPI)", "ext": "mp4", "resolution": "1920x1080", "height": 1080, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
+                        {"format_id": "rapidapi-youtube-720", "label": "720p MP4 (RapidAPI)", "ext": "mp4", "resolution": "1280x720", "height": 720, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
+                        {"format_id": "rapidapi-youtube-480", "label": "480p MP4 (RapidAPI)", "ext": "mp4", "resolution": "854x480", "height": 480, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
+                        {"format_id": "rapidapi-youtube-360", "label": "360p MP4 (RapidAPI)", "ext": "mp4", "resolution": "640x360", "height": 360, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
+                    ]
+                    
+                if ytstream and ytstream.get("audio_url"):
+                    abr = ytstream.get("audio_abr", 128)
+                    audio_formats.append({
+                        "format_id": f"rapid_direct:{ytstream['audio_url']}", 
+                        "label": f"MP3 Audio (RapidAPI Cepat)", 
+                        "ext": "mp3",
+                        "abr": abr,
+                        "filesize": 0, 
+                        "filesize_approx": "Ukuran tidak diketahui"
+                    })
+                else:
+                    audio_formats = [
+                        {"format_id": "rapidapi-youtube-audio", "label": "MP3 Audio (RapidAPI)", "ext": "mp3", "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"}
+                    ]
+
                 return {
                     "success": True,
                     "title": title,
@@ -197,15 +321,8 @@ class MediaDownloader:
                     "duration": 0,
                     "uploader": uploader or "YouTube Creator",
                     "platform": "youtube",
-                    "video_formats": [
-                        {"format_id": "apify-youtube-1080", "label": "1080p MP4 (Apify)", "ext": "mp4", "resolution": "1920x1080", "height": 1080, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
-                        {"format_id": "apify-youtube-720", "label": "720p MP4 (Apify)", "ext": "mp4", "resolution": "1280x720", "height": 720, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
-                        {"format_id": "apify-youtube-480", "label": "480p MP4 (Apify)", "ext": "mp4", "resolution": "854x480", "height": 480, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
-                        {"format_id": "apify-youtube-360", "label": "360p MP4 (Apify)", "ext": "mp4", "resolution": "640x360", "height": 360, "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"},
-                    ],
-                    "audio_formats": [
-                        {"format_id": "apify-youtube-audio", "label": "MP3 Audio (Apify)", "ext": "mp3", "filesize": 0, "filesize_approx": "Ukuran tidak diketahui"}
-                    ]
+                    "video_formats": video_formats,
+                    "audio_formats": audio_formats,
                 }
             else:
                 return {"success": False, "error": "URL YouTube tidak valid atau video tidak ditemukan."}
@@ -463,41 +580,33 @@ class MediaDownloader:
             Dict with success, file_path, file_size, error
         """
         try:
-            # Apify format overrides
-            if format_id.startswith("apify-youtube-"):
-                logger.info("Downloading YouTube video via Apify actor...")
+            # Smart Direct Link Handler
+            if format_id.startswith("rapid_direct:"):
+                direct_url = format_id.replace("rapid_direct:", "", 1)
+                logger.info(f"Downloading YouTube video via direct RapidAPI link...")
                 if progress_callback:
-                    progress_callback(10, "0 B/s", "00:15", "Menghubungkan ke Apify (membutuhkan waktu 30-40 detik)...")
+                    progress_callback(10, "0 B/s", "00:03", "Mengunduh file dari CDN...")
 
-                apify_res = self._run_apify_actor(
-                    "streamers/youtube-video-downloader",
-                    {
-                        "videos": [{"url": url}],
-                        "maxItems": 1,
-                        "downloadSubtitles": False,
-                        "downloadComments": False,
-                        "downloadTranscripts": False,
-                        "proxy": {"useApifyProxy": True}
-                    }
-                )
+                url = direct_url
+                format_id = "best"
+                
+            # RapidAPI format overrides for YouTube (Legacy fallback)
+            elif format_id.startswith("rapidapi-youtube-"):
+                logger.info("Downloading YouTube video via RapidAPI (Legacy fallback)...")
+                if progress_callback:
+                    progress_callback(10, "0 B/s", "00:05", "Menghubungkan ke RapidAPI (super cepat)...")
 
-                if not apify_res or len(apify_res) == 0:
-                    return {"success": False, "error": "Gagal mendapatkan link download dari Apify."}
-
-                item = apify_res[0]
-                if output_type == "audio":
-                    direct_url = item.get("audioOnlyUrl") or item.get("audioUrl") or item.get("url")
-                else:
-                    direct_url = item.get("downloadedFileUrl") or item.get("downloadUrl") or item.get("videoUrl") or item.get("url")
-                if not direct_url:
-                    direct_url = item.get("downloadedFileUrl") or item.get("videoOnlyUrl") or item.get("audioOnlyUrl")
+                ytstream = self._get_ytstream_info(url)
+                direct_url = None
+                if ytstream:
+                    direct_url = ytstream.get("audio_url") if output_type == "audio" else ytstream.get("video_url")
 
                 if not direct_url:
-                    return {"success": False, "error": "Link video/audio tidak ditemukan dalam response Apify."}
+                    return {"success": False, "error": "Gagal mendapatkan link download dari RapidAPI."}
 
-                logger.info(f"Apify returned direct URL: {direct_url[:100]}...")
+                logger.info(f"RapidAPI returned direct URL: {direct_url[:100]}...")
                 if progress_callback:
-                    progress_callback(30, "0 B/s", "00:05", "Mengunduh file dari CDN...")
+                    progress_callback(30, "0 B/s", "00:03", "Mengunduh file dari CDN...")
 
                 url = direct_url
                 format_id = "best"
