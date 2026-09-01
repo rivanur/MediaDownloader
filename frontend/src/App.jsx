@@ -182,6 +182,23 @@ function App() {
           API_BASE={API_BASE} 
         />
 
+        {/* Adsterra Native Banner */}
+        <div className="my-8 flex justify-center w-full overflow-hidden">
+          <div id="container-01fc966c7ee595466e75917b5df2bdac"></div>
+        </div>
+
+        {/* Adsterra Smartlink Banner */}
+        <div className="my-6 text-center">
+          <a 
+            href="https://www.profitableratecpmnetwork.com/agtp754n?key=a559e19fb55a9cc423acf3c0ca69aee6" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-purple-600/30 to-pink-600/30 border border-purple-500/30 text-xs md:text-sm font-medium text-purple-200 hover:text-white hover:border-purple-500/60 transition-all shadow-lg hover:shadow-purple-500/20"
+          >
+            🔥 <span className="underline underline-offset-4">Rekomendasi Spesial Hari Ini</span> &rarr;
+          </a>
+        </div>
+
         {/* Feature Descriptions & Guide Grid */}
         <FeatureGuides onOpenGuide={handleOpenGuide} />
 

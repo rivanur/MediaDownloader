@@ -6,6 +6,15 @@ export default function Footer({ onOpenHelp, onOpenLegal }) {
     <footer className="mt-20 pt-8 border-t border-white/5 flex flex-col items-center gap-4 text-zinc-500 text-sm">
       {/* Row 1: Main Tautan Utama (Centered) */}
       <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4 text-xs">
+        <a
+          href="https://www.profitableratecpmnetwork.com/agtp754n?key=a559e19fb55a9cc423acf3c0ca69aee6"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-purple-300 transition-colors text-purple-400 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+        >
+          🔥 Promo Sponsor
+        </a>
+        <span className="text-zinc-700">|</span>
         <button
           onClick={onOpenHelp}
           className="hover:text-white transition-colors text-zinc-500 hover:underline flex items-center gap-1 cursor-pointer"
