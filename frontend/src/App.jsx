@@ -8,6 +8,8 @@ import VideoResult from './components/VideoResult';
 import DownloadProgress from './components/DownloadProgress';
 import FeatureGuides from './components/FeatureGuides';
 import Footer from './components/Footer';
+import AdBanner from './components/AdBanner';
+import AdNativeBanner from './components/AdNativeBanner';
 
 // Import Modals
 import HelpModal from './components/Modals/HelpModal';
@@ -174,6 +176,9 @@ function App() {
           error={error} 
         />
 
+        {/* Adsterra 320x50 Banner */}
+        <AdBanner />
+
         {/* Video Results Content */}
         <VideoResult 
           videoInfo={videoInfo} 
@@ -183,9 +188,7 @@ function App() {
         />
 
         {/* Adsterra Native Banner */}
-        <div className="my-8 flex justify-center w-full overflow-hidden">
-          <div id="container-01fc966c7ee595466e75917b5df2bdac"></div>
-        </div>
+        <AdNativeBanner />
 
         {/* Adsterra Smartlink Banner */}
         <div className="my-6 text-center">
